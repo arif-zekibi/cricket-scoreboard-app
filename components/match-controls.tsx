@@ -92,7 +92,8 @@ export function MatchControls({ matchData, setMatchData, onInningComplete }: Mat
   // Check innings completion
   const ballsRemaining = matchData.overs * 6 - (matchData.currentOver * 6 + matchData.currentBall)
   const allOversComplete = ballsRemaining <= 0
-  const allOut = matchData.wickets >= 10
+  const teamSize = matchData.battingTeam?.battingOrder?.length || 11
+  const allOut = matchData.wickets >= 10 || matchData.wickets >= teamSize - 1
 
   // Check target achieved for second innings
   const targetAchieved =

@@ -92,6 +92,7 @@ export default function Home() {
           },
         },
         currentInning: 2,
+        status: "in-progress",
       }
       setMatchData(updatedData)
       setView("inning")
@@ -113,6 +114,9 @@ export default function Home() {
         },
         status: "completed",
       }
+      // Save with completed status immediately
+      const matchId = saveMatch(updatedData, currentMatchId)
+      setCurrentMatchId(matchId)
       setMatchData(updatedData)
       setView("summary")
     }

@@ -139,39 +139,126 @@ export function MatchHistory({ onLoadMatch, onNewMatch }: MatchHistoryProps) {
         </Card>
       ) : (
         <div className="space-y-4">
-          {matches.map((match) => (
-            <Card key={match.id} className="p-4 hover:shadow-lg transition-shadow">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg">
-                    {match.batTeamName} ({match.totalRuns}/{match.totalWickets}) vs {match.bowlTeamName}
-                  </h3>
-                  <p className="text-sm text-gray-600">
-                    {match.completedOvers} overs • {formatDate(match.timestamp)}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Status:{" "}
-                    <span
-                      className={`font-bold ${match.status === "completed" ? "text-green-600" : "text-yellow-600"}`}
+          {matches.map((match) => {
+            // Calculate match details
+            const inning1 = match.innings?.inning1
+            const inning2 = match.innings?.inning2
+            const isCompleted = match.status === "completed"
+
+            // Determine winner and result
+            let matchResult = null
+            if (isCompleted && inning1 && inning2) {
+              if (inning2.runs > inning1.runs) {
+                matchResult = {
+                  winner: match.team2Name,
+                  margin: `by ${10 - inning2.wickets} wickets`,
+                  color: "text-green-700"
+                }
+              } else {
+                matchResult = {
+                  winner: match.team1Name,
+                  margin: `by ${inning1.runs - inning2.runs} runs`,
+                  color: "text-green-700"
+                }
+              }
+            }
+
+            return (
+              <Card key={match.id} className="p-4 hover:shadow-lg transition-shadow border-l-4 border-blue-500">
+                <div className="flex justify-between items-start gap-4">
+                  <div className="flex-1 space-y-2">
+                    {/* Match Header */}
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-xl text-gray-900">
+                        {match.team1Name || "Team 1"} vs {match.team2Name || "Team 2"}
+                      </h3>
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        isCompleted ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
+                      }`}>
+                        {isCompleted ? "COMPLETED" : "IN PROGRESS"}
+                      </span>
+                    </div>
+
+                    {/* Match Info */}
+                    <div className="flex items-center gap-3 text-sm text-gray-600">
+                      <span className="font-semibold bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                        {match.matchType || "Match"}
+                      </span>
+                      <span>•</span>
+                      <span>{match.overs || 0} overs per innings</span>
+                      <span>•</span>
+                      <span>{formatDate(match.timestamp)}</span>
+                    </div>
+
+                    {/* Scores */}
+                    {(inning1 || inning2) && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                        {/* Innings 1 */}
+                        {inning1 && (
+                          <div className="bg-blue-50 p-3 rounded border-l-4 border-blue-400">
+                            <p className="text-xs font-semibold text-blue-700 mb-1">INNINGS 1</p>
+                            <p className="font-bold text-gray-900">
+                              {match.team1Name}: {inning1.runs}/{inning1.wickets}
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              ({inning1.overs}.{inning1.balls || 0} overs)
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Innings 2 */}
+                        {inning2 && (
+                          <div className="bg-amber-50 p-3 rounded border-l-4 border-amber-400">
+                            <p className="text-xs font-semibold text-amber-700 mb-1">INNINGS 2</p>
+                            <p className="font-bold text-gray-900">
+                              {match.team2Name}: {inning2.runs}/{inning2.wickets}
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              ({inning2.overs}.{inning2.balls || 0} overs)
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Match Result */}
+                    {matchResult && (
+                      <div className="bg-green-50 p-3 rounded border-l-4 border-green-500 mt-2">
+                        <p className="text-sm font-bold text-green-800">
+                          🏆 {matchResult.winner} won {matchResult.margin}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* In Progress Status */}
+                    {!isCompleted && (
+                      <div className="bg-yellow-50 p-2 rounded border-l-4 border-yellow-400 mt-2">
+                        <p className="text-xs text-yellow-800">
+                          📊 Innings {match.currentInning || 1} in progress
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      onClick={() => onLoadMatch(match.matchData)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2"
                     >
-                      {match.status === "completed" ? "Completed" : "In Progress"}
-                    </span>
-                  </p>
+                      Load
+                    </Button>
+                    <Button
+                      onClick={() => handleDelete(match.id)}
+                      className="bg-red-600 hover:bg-red-700 text-white text-sm px-4 py-2"
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </div>
-                <div className="space-x-2 flex">
-                  <Button
-                    onClick={() => onLoadMatch(match.matchData)}
-                    className="bg-blue-600 hover:bg-blue-700 text-sm"
-                  >
-                    Load
-                  </Button>
-                  <Button onClick={() => handleDelete(match.id)} className="bg-red-600 hover:bg-red-700 text-sm">
-                    Delete
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            )
+          })}
         </div>
       )}
     </div>

@@ -18,6 +18,8 @@ export function DeliveryInput({ matchData, setMatchData }: DeliveryInputProps) {
   const [isBye, setIsBye] = useState(false)
   const [isLegBye, setIsLegBye] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showBatsmanSelector, setShowBatsmanSelector] = useState(false)
+  const [selectedNewBatsman, setSelectedNewBatsman] = useState<string>("")
 
   const wicketTypes = ["Caught", "Bowled", "LBW", "Run Out", "Stumped", "Hit Wicket", "Handled Ball", "Obstructing"]
 
@@ -30,6 +32,31 @@ export function DeliveryInput({ matchData, setMatchData }: DeliveryInputProps) {
     setIsBye(false)
     setIsLegBye(false)
     setError(null)
+    setShowBatsmanSelector(false)
+    setSelectedNewBatsman("")
+  }
+
+  const handleSelectNewBatsman = () => {
+    if (!selectedNewBatsman) {
+      setError("Please select a batsman")
+      return
+    }
+
+    const updatedData = { ...matchData }
+
+    // Find the index of the selected batsman in the batting order
+    const newBatsmanIdx = updatedData.battingTeam.battingOrder.findIndex((id: string) => id === selectedNewBatsman)
+
+    if (newBatsmanIdx === -1) {
+      setError("Invalid batsman selection")
+      return
+    }
+
+    // Replace the dismissed striker with the new batsman
+    updatedData.strikerIdx = newBatsmanIdx
+
+    setMatchData(updatedData)
+    resetForm()
   }
 
   const handleDeliver = () => {
@@ -125,26 +152,43 @@ export function DeliveryInput({ matchData, setMatchData }: DeliveryInputProps) {
     if (isWicket) {
       updatedData.wickets += 1
 
-      // New batsman comes in
-      if (updatedData.wickets < 10) {
-        // Find next batsman in batting order
-        const currentBattingPositions = [updatedData.strikerIdx, updatedData.nonStrikerIdx]
-        const maxPosition = Math.max(...currentBattingPositions)
+      // Check if team is all out (10 wickets)
+      const teamSize = updatedData.battingTeam.battingOrder.length
+      const isAllOut = updatedData.wickets >= 10 || updatedData.wickets >= teamSize - 1
 
-        if (maxPosition + 1 < updatedData.battingTeam.battingOrder.length) {
-          // Replace dismissed batsman with next in order
-          updatedData.strikerIdx = maxPosition + 1
-        }
+      // If not all out, need to select next batsman
+      if (!isAllOut) {
+        setMatchData(updatedData)
+        setShowBatsmanSelector(true)
+        return
       }
     }
 
-    // Strike rotation logic (only for legal deliveries)
+    // Strike rotation logic
     let shouldRotateStrike = false
 
-    if (isLegalDelivery && !isWicket) {
-      // Rotate on odd runs (1, 3, 5)
-      if ([1, 3, 5].includes(batsmanRuns)) {
+    if (!isWicket) {
+      // For legal deliveries, rotate on odd batsman runs
+      if (isLegalDelivery && [1, 3, 5].includes(batsmanRuns)) {
         shouldRotateStrike = true
+      }
+
+      // For extras (wide/no-ball) with runs, rotate based on total runs scored
+      if (!isLegalDelivery && (isWide || isNoBall)) {
+        // For wide: if additional runs scored beyond the penalty (e.g., wide + 1 run = 2 total)
+        // For no-ball: if runs scored by batsman are odd (e.g., no-ball + 1 run = odd)
+        if (isWide) {
+          // Wide: rotate if total runs (including penalty) are odd
+          // Wide is 1 penalty + runs, so if runs > 1, check if runs-1 is odd
+          if (runs > 0 && [1, 3, 5].includes(runs)) {
+            shouldRotateStrike = true
+          }
+        } else if (isNoBall) {
+          // No-ball: rotate if batsman runs are odd
+          if ([1, 3, 5].includes(batsmanRuns)) {
+            shouldRotateStrike = true
+          }
+        }
       }
     }
 
@@ -185,7 +229,9 @@ export function DeliveryInput({ matchData, setMatchData }: DeliveryInputProps) {
   if (!matchData) return null
 
   const ballsRemaining = matchData.overs * 6 - (matchData.currentOver * 6 + matchData.currentBall)
-  const isInningOver = ballsRemaining <= 0 || matchData.wickets >= 10
+  const teamSize = matchData.battingTeam?.battingOrder?.length || 11
+  const isAllOut = matchData.wickets >= 10 || matchData.wickets >= teamSize - 1
+  const isInningOver = ballsRemaining <= 0 || isAllOut
 
   // Check if target achieved (second innings)
   const targetAchieved = matchData.currentInning === 2 &&
@@ -193,6 +239,29 @@ export function DeliveryInput({ matchData, setMatchData }: DeliveryInputProps) {
     matchData.runs > matchData.innings.inning1.runs
 
   const isMatchOver = isInningOver || targetAchieved
+
+  // Get available batsmen (not currently batting and haven't batted yet)
+  const getAvailableBatsmen = () => {
+    if (!matchData.battingTeam) return []
+
+    const currentBatsmen = [
+      matchData.battingTeam.battingOrder[matchData.strikerIdx],
+      matchData.battingTeam.battingOrder[matchData.nonStrikerIdx]
+    ]
+
+    // Get all players who have batted (appeared in deliveries as batsman)
+    const battedPlayerIds = new Set<string>()
+    matchData.deliveries?.forEach((d: any) => {
+      if (d.batsmanId) battedPlayerIds.add(d.batsmanId)
+    })
+
+    return matchData.battingTeam.players.filter((player: any) => {
+      const playerId = player.id
+      return !currentBatsmen.includes(playerId) && !battedPlayerIds.has(playerId)
+    })
+  }
+
+  const availableBatsmen = getAvailableBatsmen()
 
   return (
     <Card className="p-4 sticky top-6 bg-white border-2">
@@ -204,19 +273,47 @@ export function DeliveryInput({ matchData, setMatchData }: DeliveryInputProps) {
         </div>
       )}
 
-      {matchData.nextBallIsFreeHit && (
+      {/* Batsman Selector Dialog */}
+      {showBatsmanSelector && (
+        <div className="mb-4 p-4 bg-yellow-50 border-2 border-yellow-400 rounded">
+          <h4 className="font-bold text-lg mb-2 text-red-700">🏏 Wicket! Select Next Batsman</h4>
+          <p className="text-sm text-gray-700 mb-3">A wicket has fallen. Please select the next batsman to come in.</p>
+
+          <select
+            value={selectedNewBatsman}
+            onChange={(e) => setSelectedNewBatsman(e.target.value)}
+            className="w-full p-2 border-2 border-yellow-400 rounded text-sm bg-white mb-3"
+          >
+            <option value="">Select next batsman...</option>
+            {availableBatsmen.map((player: any) => (
+              <option key={player.id} value={player.id}>
+                #{player.jerseyNumber} {player.name}
+              </option>
+            ))}
+          </select>
+
+          <Button
+            onClick={handleSelectNewBatsman}
+            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold"
+          >
+            Confirm Batsman
+          </Button>
+        </div>
+      )}
+
+      {matchData.nextBallIsFreeHit && !showBatsmanSelector && (
         <div className="p-2 bg-yellow-100 text-yellow-800 rounded text-sm mb-3 font-semibold">
           ⚡ FREE HIT - Next delivery
         </div>
       )}
 
-      {isMatchOver && (
+      {isMatchOver && !showBatsmanSelector && (
         <div className="p-3 bg-green-100 text-green-800 rounded text-sm mb-3 font-bold">
           {targetAchieved ? "🎉 TARGET ACHIEVED!" : "📊 INNINGS COMPLETE!"}
         </div>
       )}
 
-      <div className="space-y-4">
+      {!showBatsmanSelector && <div className="space-y-4">
         {/* Runs Section */}
         <div>
           <p className="text-sm font-semibold mb-2">Runs Scored</p>
@@ -395,7 +492,7 @@ export function DeliveryInput({ matchData, setMatchData }: DeliveryInputProps) {
             </>
           )}
         </div>
-      </div>
+      </div>}
     </Card>
   )
 }
